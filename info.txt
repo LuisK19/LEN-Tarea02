@@ -1,0 +1,9 @@
+a. Nombre del curso: Lenguajes de Programacion
+b. Semestre y año lectivo: Semestre I, 2026
+c. Nombre del estudiante: Luis Carlos Trejos Rivera
+d. Numero de carnet: 2022437816
+e. Numero de tarea: TC2
+f. Fecha de entrega: 15 de abril de 2026
+g. Estatus de la entrega: MuyBuena
+
+Repositorio GitHub:  https://github.com/LuisK19/LEN-Tarea02
