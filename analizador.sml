@@ -1,14 +1,33 @@
-(* analizador.sml
-   Autor: Luis
-   Descripcion: Analisis de matriculas cargadas desde un archivo CSV.
-   Funciones principales: leerCSV, rankingCursos, cursosMas5Estudiantes,
-                          buscarPorEstudiante, cursosPorCreditos, resumenGeneral, main
-*)
+(* ========================================================================
+   analizador.sml
+   Autor: Luis [Nombre completo del estudiante]
+   Carnet: [Numero de carnet]
+   Fecha: Abril 2026
+   Descripcion:
+       Programa que analiza un archivo CSV de matriculas universitarias.
+       Ofrece varias consultas: ranking de cursos por ingreso, cursos con mas
+       de 5 estudiantes, busqueda por estudiante, cursos por cantidad de creditos,
+       y un resumen general. Se hace uso de funciones de orden superior:
+       List.map, List.filter, List.foldl.
+   ========================================================================= *)
 
+(* Tipo que representa una matricula: (carnet, nombre, curso, creditos, costo) *)
 type matricula = string * string * string * int * real
 
+(* ------------------------------------------------------------------------
+   leerCSV : string -> matricula list
+   Lee un archivo CSV y lo convierte en una lista de matriculas.
+   La primera linea (cabecera) se omite automaticamente.
+   Formato esperado por linea:
+       carnet,nombre,curso,creditos,costo_credito
+   Si alguna linea no tiene el formato correcto o los numeros no son validos,
+   se imprime un aviso y se omite esa linea.
+   Parametro: archivo - ruta del archivo CSV.
+   Retorna: lista de matriculas (puede ser vacia).
+   ------------------------------------------------------------------------ *)
 fun leerCSV archivo =
     let val ins = TextIO.openIn archivo
+        (* Funcion recursiva que lee linea por linea *)
         fun leerLineas () =
             case TextIO.inputLine ins of
                 NONE => []
@@ -29,6 +48,12 @@ fun leerCSV archivo =
         val datos = leerLineas ()
     in TextIO.closeIn ins; datos end
 
+(* ------------------------------------------------------------------------
+   Funciones auxiliares de entrada con validacion.
+   ------------------------------------------------------------------------ *)
+
+(* leerEntero : string -> int
+   Solicita un numero entero, validando la entrada. *)
 fun leerEntero prompt =
     (print prompt; case TextIO.inputLine TextIO.stdIn of
          SOME line => (case Int.fromString (String.substring (line, 0, size line - 1)) of
@@ -36,6 +61,8 @@ fun leerEntero prompt =
                          | NONE => (print "Debe ser entero.\n"; leerEntero prompt))
        | NONE => (print "Error.\n"; leerEntero prompt))
 
+(* leerReal : string -> real
+   Solicita un numero real, validando la entrada. *)
 fun leerReal prompt =
     (print prompt; case TextIO.inputLine TextIO.stdIn of
          SOME line => (case Real.fromString (String.substring (line, 0, size line - 1)) of
@@ -43,18 +70,32 @@ fun leerReal prompt =
                          | NONE => (print "Debe ser real.\n"; leerReal prompt))
        | NONE => (print "Error.\n"; leerReal prompt))
 
+(* leerString : string -> string
+   Solicita una cadena de texto. *)
 fun leerString prompt =
     (print prompt; case TextIO.inputLine TextIO.stdIn of
          SOME line => String.substring (line, 0, size line - 1)
        | NONE => "")
 
+(* ------------------------------------------------------------------------
+   rankingCursos : matricula list -> unit
+   a) Muestra un ranking de cursos ordenado descendentemente por monto total
+      generado (creditos * costo_credito). El usuario filtra por rango min-max.
+   Algoritmo:
+       - List.foldl acumula en una lista asociativa (curso, montoTotal).
+       - ListMergeSort.sort ordena de mayor a menor.
+       - List.filter selecciona los cursos dentro del rango indicado.
+   Parametro: datos - lista de matriculas.
+   ------------------------------------------------------------------------ *)
 fun rankingCursos datos =
-    let fun actualizar (curso, monto) [] = [(curso, monto)]
+    let (* actualizar: agrega o acumula el monto de un curso en la lista *)
+        fun actualizar (curso, monto) [] = [(curso, monto)]
           | actualizar (curso, monto) ((c,t)::rest) =
             if c = curso then (c, t + monto) :: rest
             else (c,t) :: actualizar (curso, monto) rest
         val montosCurso = List.foldl (fn ((_,_,curso,cred,costo), acc) =>
                                          actualizar (curso, real(cred) * costo) acc) [] datos
+        (* comparar: retorna true si t1 < t2, lo que produce orden descendente *)
         fun comparar ((_,t1),(_,t2)) = t1 < t2
         val ordenados = ListMergeSort.sort comparar montosCurso
     in print "\n--- Ranking de cursos por ingreso total ---\n";
@@ -68,8 +109,17 @@ fun rankingCursos datos =
        end
     end
 
+(* ------------------------------------------------------------------------
+   cursosMas5Estudiantes : matricula list -> unit
+   b) Identifica los cursos que tienen mas de 5 estudiantes diferentes.
+   Algoritmo:
+       - List.foldl construye una lista (curso, lista de carnets) sin repetidos.
+       - List.filter selecciona los cursos con mas de 5 entradas en esa lista.
+   Parametro: datos - lista de matriculas.
+   ------------------------------------------------------------------------ *)
 fun cursosMas5Estudiantes datos =
-    let fun agregarEstudiante (curso, carnet) [] = [(curso, [carnet])]
+    let (* agregarEstudiante: inserta un carnet en la lista del curso si no existe *)
+        fun agregarEstudiante (curso, carnet) [] = [(curso, [carnet])]
           | agregarEstudiante (curso, carnet) ((c,estud)::rest) =
             if c = curso then
                 if List.exists (fn e => e = carnet) estud then (c,estud)::rest
@@ -84,10 +134,21 @@ fun cursosMas5Estudiantes datos =
        print "\n"
     end
 
+(* ------------------------------------------------------------------------
+   buscarPorEstudiante : matricula list -> unit
+   c) Busca matriculas cuyo carnet coincida exactamente con el patron dado,
+      o cuyo nombre contenga el patron (subcadena, sin distinguir mayusculas).
+   Algoritmo:
+       - List.filter con una funcion que verifica carnet = patron
+         o bien isSubstring sobre ambos textos convertidos a minusculas.
+   Parametro: datos - lista de matriculas.
+   ------------------------------------------------------------------------ *)
 fun buscarPorEstudiante datos =
     let val patron = leerString "\nIngrese carnet exacto o parte del nombre: "
+        (* coincide: true si el carnet es exacto o el nombre contiene el patron *)
         fun coincide (carnet, nombre, _, _, _) =
-            carnet = patron orelse String.isSubstring patron nombre
+            carnet = patron orelse
+            String.isSubstring (String.map Char.toLower patron) (String.map Char.toLower nombre)
         val resultados = List.filter coincide datos
     in if null resultados then print "No se encontraron matriculas.\n"
        else (print "\nResultados:\n";
@@ -97,10 +158,21 @@ fun buscarPorEstudiante datos =
              print "\n")
     end
 
+(* ------------------------------------------------------------------------
+   cursosPorCreditos : matricula list -> unit
+   d) Dado un numero de creditos, muestra los cursos (sin repetir) que tienen
+      exactamente esa cantidad de creditos.
+   Algoritmo:
+       - List.filter selecciona las matriculas con los creditos buscados.
+       - List.map extrae unicamente el codigo del curso.
+       - La funcion auxiliar unicos elimina duplicados.
+   Parametro: datos - lista de matriculas.
+   ------------------------------------------------------------------------ *)
 fun cursosPorCreditos datos =
     let val creditosBusc = leerEntero "\nIngrese numero de creditos: "
         fun coincideCred (_,_,_,cred,_) = cred = creditosBusc
         val cursos = List.map (fn (_,_,curso,_,_) => curso) (List.filter coincideCred datos)
+        (* unicos: elimina elementos repetidos preservando la primera aparicion *)
         fun unicos [] = []
           | unicos (x::xs) = if List.exists (fn y => y = x) xs then unicos xs else x :: unicos xs
         val distintos = unicos cursos
@@ -110,8 +182,21 @@ fun cursosPorCreditos datos =
        print "\n"
     end
 
+(* ------------------------------------------------------------------------
+   resumenGeneral : matricula list -> unit
+   e) Genera un informe completo con:
+       1. Cantidad de estudiantes distintos por curso.
+       2. Estudiante con mayor cantidad de creditos matriculados.
+       3. Estudiante con menor cantidad de creditos matriculados.
+       4. Curso con mayor ingreso total.
+       5. Estudiante que genera mayor ingreso total.
+   Algoritmo: multiples List.foldl para acumular datos por curso y por
+   estudiante, List.map para extraer valores y calcular maximos/minimos.
+   Parametro: datos - lista de matriculas.
+   ------------------------------------------------------------------------ *)
 fun resumenGeneral datos =
-    let fun agregarEstCurso (curso, carnet) [] = [(curso, [carnet])]
+    let (* 1. Estudiantes distintos por curso *)
+        fun agregarEstCurso (curso, carnet) [] = [(curso, [carnet])]
           | agregarEstCurso (curso, carnet) ((c,est)::rest) =
             if c = curso then
                 if List.exists (fn e => e = carnet) est then (c,est)::rest
@@ -119,6 +204,8 @@ fun resumenGeneral datos =
             else (c,est)::agregarEstCurso (curso, carnet) rest
         val estudiantesPorCurso = List.foldl (fn ((carnet,_,curso,_,_), acc) =>
                                                  agregarEstCurso (curso, carnet) acc) [] datos
+
+        (* 2 y 3. Creditos totales por estudiante *)
         fun sumarCreditosEst (carnet, cred) [] = [(carnet, cred)]
           | sumarCreditosEst (carnet, cred) ((c,sum)::rest) =
             if c = carnet then (c, sum+cred)::rest else (c,sum)::sumarCreditosEst (carnet, cred) rest
@@ -128,6 +215,8 @@ fun resumenGeneral datos =
         val mayorCreditos = List.foldl (fn (c1, c2) => if c1 > c2 then c1 else c2) 0 creditosSolo
         val menorCreditos = List.foldl (fn (c1, c2) => if c1 < c2 then c1 else c2) (valOf Int.maxInt) creditosSolo
         fun buscarEstPorCreditos creditos = List.find (fn (_,c) => c = creditos) creditosPorEst
+
+        (* 4. Curso con mayor ingreso total *)
         fun actualizarCursoMonto (curso, monto) [] = [(curso, monto)]
           | actualizarCursoMonto (curso, monto) ((c,t)::rest) =
             if c = curso then (c, t+monto)::rest else (c,t)::actualizarCursoMonto (curso, monto) rest
@@ -135,6 +224,8 @@ fun resumenGeneral datos =
                                          actualizarCursoMonto (curso, real(cred)*costo) acc) [] datos
         val (cursoMayorMonto, mayorMonto) =
             List.foldl (fn ((c,t), (cMax,tMax)) => if t > tMax then (c,t) else (cMax,tMax)) ("",0.0) montosCurso
+
+        (* 5. Estudiante que genera mayor ingreso total *)
         fun actualizarEstMonto (carnet, monto) [] = [(carnet, monto)]
           | actualizarEstMonto (carnet, monto) ((c,t)::rest) =
             if c = carnet then (c, t+monto)::rest else (c,t)::actualizarEstMonto (carnet, monto) rest
@@ -145,6 +236,8 @@ fun resumenGeneral datos =
         val nombreMayorIngreso =
             case List.find (fn (carnet,_,_,_,_) => carnet = estMayorIngreso) datos of
                 SOME (_,nombre,_,_,_) => nombre | NONE => ""
+
+        (* mostrarEstudiante: dado un carnet retorna "Nombre (carnet)" *)
         fun mostrarEstudiante (carnet, cred) =
             case List.find (fn (c,_,_,_,_) => c = carnet) datos of
                 SOME (_,nombre,_,_,_) => nombre ^ " (" ^ carnet ^ ")"
@@ -163,6 +256,12 @@ fun resumenGeneral datos =
        print "\n"
     end
 
+(* ------------------------------------------------------------------------
+   menuAnalisis : matricula list -> unit
+   Presenta un menu interactivo con todas las opciones de analisis.
+   Permite seleccionar repetidamente hasta presionar 's' para salir.
+   Parametro: datos - lista de matriculas ya cargada desde el archivo.
+   ------------------------------------------------------------------------ *)
 fun menuAnalisis datos =
     let fun loop () =
             (print "\n=== MENU DE ANALISIS ===\n";
@@ -185,6 +284,11 @@ fun menuAnalisis datos =
                | NONE => (print "Error.\n"; loop()))
     in loop() end
 
+(* ------------------------------------------------------------------------
+   main : unit -> unit
+   Funcion principal del programa Analizador.
+   Solicita la ruta del archivo CSV, lo carga y, si hay datos, inicia el menu.
+   ------------------------------------------------------------------------ *)
 fun main () =
     (print "=== ANALIZADOR DE MATRICULAS ===\n";
      print "Ruta del archivo CSV (ej. matricula.csv): ";
